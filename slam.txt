@@ -1,0 +1,147 @@
+--- Intro ---
+In this mini-project you'll be solving a simplified Pacman version of the simultaneous localization and mapping (SLAM) problem. In SLAM, Pacman knows neither its own location nor the locations of the maze's walls; nevertheless, he must navigate the environment and draw a map of the walls as he goes.
+
+This seems like a catch-22: Pacman needs to know the map in order to estimate his position, but he needs to know his position in order to estimate the map. It turns out we can solve this problem using particle filtering, as we'll see shortly.
+
+Pacman has several pieces of information to help him:
+
+
+* At every time step, Pacman sends out a sonar in all 4 directions. The sonar bounces off walls and tells him the distance to the nearest wall in that direction.
+
+* Pacman knows his starting position, and he remembers what direction he tries to move at each time step. Although starting position is not typically given in SLAM, we provide it here to simplify the display (take a moment to convince yourself that if we didn't provide a starting position, you could only ever draw the map relative to Pacman's current position; you could never draw an absolute map). This will not change the problem much.
+
+* Pacman knows the length and width of the maze, and he knows the borders of the maze are walls. This is not typically given in a SLAM problem either, but we provide it, again, to simplify the display, preventing your map from being shifted off by a constant.
+
+* Pacman knows the set of all positions that may or may not have a wall in them. Again, while not typically known in SLAM, we provide it here to simplify the way you can store your inferences.
+
+* Pacman is given a wall prior, that is, the probability that a position holds a wall prior to no other knowledge (essentially, this is the fraction of the environment that is covered in walls).
+
+However, there are also two factors that work against Pacman:
+
+* When Pacman tries to move in a direction, with 90% probability he succeeds, and with 10% probability he moves off in a random direction.
+
+* Pacman's sonar range measurements are noisy. Pacman knows his sonar will never reflect too late (i.e. it cannot pass through a wall), but there is a chance it may reflect too early.
+
+--- SLAM in Pacman's World ---
+
+To start up a game, run the file pacman.py. This will start up a keyboard-controlled agent using a default inference algorithm.
+
+When you start the game you'll see Pacman, walls, and colors for each space. Seeing Pacman and the walls is just for your benefit; in actuality Pacman does not know his position or the position of the walls. Instead, his beliefs are represented by the colors of the squares. Brighter blue indicates more likely a wall is present. Brighter orange indicates more likely that is Pacman's current position. You'll notice from the default inference, each square is equally likely to be a wall, and Pacman only guesses his position to be his starting position.
+
+You'll be implementing the SLAMParticleFilter inference module in the file inference.py. When you fill this out, Pacman's beliefs about his position and the positions of the walls should update as you run the game.
+
+If you don't wish to keyboard control Pacman, we've provided two automatically running agents for you. One, called AutoSLAMAgent, moves randomly. The other, PatrolSLAMAgent, tends to move forward and only turns when necessary. All of the agents (including the keyboard agent!) only move as they intend 90% of the time.
+
+You don't have to write any agents for this project. Just let the agents move around; you're only responsible for the mapping. Of course, it is an interesting problem to design an agent to move so that it can map as efficiently as possible; however, this problem is out of the scope of this extra credit.
+
+--- The Math ---
+To sum up, you are given
+x0, a starting position
+a0, a2, ..., at, a list of attempted actions, and
+z0, z2, ..., zt, a list of noisy range measurements 
+
+And your goal is to estimate
+xt, Pacman's current position
+m, a map of the environment (a probability that each position is a wall)
+
+This means you'll want to calculate the distribution
+
+P(x1,...xt, m | x0, a0, ..., at, z0, ..., zt)
+
+This distribution can be factored: 
+
+P(x1,...xt, m | x0, a0, ..., at, z0, ..., zt) = P(x0, ..., xt | z0, ..., zt, a0, ..., at) * P(m | x0, ..., xt, z0, ..., zt)
+
+In other words, you just estimate two distributions separately:
+
+* The distribution over the Pacman's trajectory given range measurements and attempted actions.
+
+* The distribution over possible maps, using range measurements and attempted actions, and taking Pacman's trajectory as given.
+
+You won't need to bother combining them into a joint distribution. SLAMParticle filter just needs to return each sepearately.
+
+The latter of the two distributions is relatively straightforward to calculate. If we knew Pacman's true trajectory and range measurements, it isn't too much of a stretch to come up with a map. This problem is called mapping with known poses, and it can be solved analytically (more on this later).
+
+The former distribution is difficult. There are several techniques to estimate it, but one common approach is using a particle filter. You're required to implement such a particle filter for this project.
+
+--- Particle Filtering for SLAM ---
+
+Recall that a particle represents an entire hypothesis as to the scenario. As such, for this project, each particle will contain both an entire trajectory for Pacman and a hypothesized map. Note that, within a particle, Pacman's position and the proposed map can be considered as given.
+
+The high level algorithm we suggest you follow is as follows:
+
+At each time step:
+
+* Compute a distribution over Pacman's new position. Do this by weighting each particle using the new evidence and then resampling, as you would in a standard particle filter. In this step, each particle should be judged assuming its map is the true map. This process is essentially no different from the particle filtering you've done in the past, though if you need a referseher you can check out your text book's section on localization and mapping (section 25.3.1). The pseudo-code in figure 25.9 solves this problem of estimating trajectory with a given map.
+
+* Next, for each particle, update its map assuming its new trajectory is correct. This is the mapping with known poses problem.
+
+--- Mapping with Known Poses ---
+
+Given a trajectory and a series of range measurements, we wish to compute the map that best explains our observations.
+
+A cursory glance at this problem may worry you that it will be computationally intensive: after all, after each time step our trajectory grows by one, so doesn't that make the computation of the resulting map more complicated? Luckily, we can get around this by reusing our map from the previous time step. In other words, at each time step, all we have to do is use Pacman's latest position and latest range measurements to update our old map.
+
+The math is complicated (for a complete explanation, see http://ais.informatik.uni-freiburg.de/teaching/ss14/robotics/slides/08-occupancy-mapping-mapping-with-known-poses.pdf), but we will sum up the results for you:
+
+Our ultimate goal is to come up with m[i][j] = p, that is, for each position (i, j) in the map, come up with a probability that is it occupied. It turns out that the math will be simpler if instead of keeping track of p for each (i, j), we keep track of the ratio p/(1-p). Then we can convert back to p when necessary to report the final distribution.
+
+If m stores 1/(1-p) instead of p, here is how we update m based on the new evidence (the range measurement zt and the position xt):
+
+m[i][j] = m[i][j] * (prior/(1-prior)) * p(m[i][j] | zt, xt)/(1-p(m[i][j] | zt, xt)
+
+The term p(m[i][j] | zt, xt)/(1-p(m[i][j] | zt, xt) gives us a ratio of how likely a map position is be occupied given a position and a range measurement against how likely it is not occupied. Something that returns this probability is called an inverse range sensor model (since a range sensor model instead caculates P(zt | m, xt).
+
+--- What You Need to Implement ---
+
+We've described at a high level the approach for doing SLAM. Recall that it consists of two basic steps: weighting and resampling particles using a particle filter as you've done before, and updating particles using mapping with known poses.
+
+We've deliberately underspecified many implementation details (such as how to initialize uniformly), because you'll be expected to figure them out yourself (this is extra credit after all). You are given a lot of freedom to tweak details and improve or simplify the algorithm as you wish. However, to prevent you from getting lost, know that you'll probably have to implement the following helper functions somewhere along the way:
+
+* A function that returns what the true range measurement should be, assuming the hypothesized map is correct. (You can see this referred to in the textbook pseudocode as RAYCAST).
+
+* A model that gives returns the probability of arriving at a new position given an old position and an attempted action (You can see this referred to in the textbook pseudocode as the motion model).
+
+* The inverse sensor range model, a model that gives a ratio of probability a map square is occupied given a position and range measurement against the probability that it's not occupied. See the slide show about mapping with known poses linked earlier to get an understanding of this. If you find implementing this difficult, consider making a coarse approximation of it as follows: Any position that is closer than the range measurement is known open for sure, any position that is after the range measurement we get no information about, and the position that is at the range measurement is likely to be occupied.
+
+--- Potential Difficulties ---
+
+The algorithms as presented may not work exactly as you hope, so you may need to add tweaks to improve them. For example you may run into the problem that if certain map probabilities go to 0, you can never make them nonzero again, so you end up with a permanent mistake; you might want to prevent this.
+
+You might also run into the problem of particle depletion, that is, accidentally destroying correct particles and never being able to get them back. One solution to this is to simply use more particles (though this will slow you down!). You might try to think of your own solution.
+
+In addition, feel free to do research to get ideas for improving the particle filtering (i.e. read particle filtering papers). You are also encouraged to go research to understand SLAM better, if our explanations here aren't sufficient for you. Just beware that you may find explanations of SLAM more complicated than the one we presented here, so be careful not to get confused. You are free to try out these other implementations of SLAM if you wish, except with the constraint that you are required to use particle filtering.
+
+--- Grading ---
+
+The only program you need to change and submit is inference.py.
+
+There is no autograder for this project, because we expect the solutions to be so diverse it will be impossible to expect them to converge in the same way. We'll be grading your submissions by hand.
+
+You'll get full credit if you:
+
+* converge to the right map while tracking Pacman reasonably, 
+
+* use particle filtering, 
+
+* and don't cheat (i.e. use information about the game state you're not supposed to have access to). 
+
+We may test either of the two automatic agents on any of the provided layouts.
+
+You'll get most of the credit if your solution does something reasonable using particle filtering, even if it occasionally makes mistakes or has difficulty convering. Note that it's better to be able to fix mistakes and have trouble converging than it is to make permanent mistakes and converge quickly.
+
+To help us out, along with inference.py, please submit a text file README.txt which describes:
+
+Which layouts/which agents your particle filter works well for. This is what you want us to run to be most impressed by your implementation.
+
+Which layouts/which agents your particle filter works worst for. You'll be able to get most of the credit if you provide a thoughtful analysis of why it doesn't work well in these cases, and your ideas for how you could fix the problems if you had more time/more computation power, etc.
+
+If you looked at outside sources to get ideas for improvements on particle filtering or SLAM, also please note them as references in README.txt.
+
+--- References ---
+
+Burgard, Wolfram, Cyrill Stachniss, Maren Bennewitz, Diego Tipaldi, and Luciano Spinello. "Grid Maps and Mapping with Known Poses". Web. <http://ais.informatik.uni-freiburg.de/teaching/ss14/robotics/slides/08-occupancy-mapping-mapping-with-known-poses.pdf>
+
+Grisetti, Giorgio, Cyrill Stachniss, and Wolfram Burgard. "Improving Grid-based SLAM with Rao-Blackwellized Particle Filters by Adaptive Proposals and Selective Resampling."
+
+Russell, Stuart J., and Peter Norvig. Artificial Intelligence: A Modern Approach. Upper Saddle River: Prentice-Hall, 2010. Print.

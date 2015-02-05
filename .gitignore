@@ -49,6 +49,8 @@ crashlytics-build.properties
 
 
 ### Python template
+=======
+>>>>>>> 4101e256ebb5064a970b3df9cc8cab01538b7e1e
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -103,5 +105,3 @@ docs/_build/
 
 # PyBuilder
 target/
-
-
